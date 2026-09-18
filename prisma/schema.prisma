@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum QuizStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+}
+
+enum QuestionType {
+  THEORY
+  CODE
+  IMAGE
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(USER)
+  teamId       String?
+  team         Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  attempts     Attempt[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([email])
+  @@index([teamId])
+  @@index([role])
+}
+
+model Team {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  users     User[]
+  attempts  Attempt[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Quiz {
+  id              String      @id @default(uuid())
+  title           String
+  description     String?     @db.Text
+  passcode        String?     // Admin configurable passcode required to start quiz
+  startTime       DateTime?
+  endTime         DateTime?
+  durationMinutes Int?
+  status          QuizStatus  @default(DRAFT)
+  isManualActive  Boolean     @default(false)
+  sections        Section[]
+  attempts        Attempt[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
+
+  @@index([status])
+  @@index([isManualActive])
+  @@index([startTime, endTime])
+}
+
+model Section {
+  id           String     @id @default(uuid())
+  quizId       String
+  quiz         Quiz       @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  orderIndex   Int        @default(0)
+  defaultMarks Float      @default(1.0)
+  questions    Question[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([quizId, orderIndex])
+}
+
+model Question {
+  id           String       @id @default(uuid())
+  sectionId    String
+  section      Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  type         QuestionType @default(THEORY)
+  text         String       @db.Text
+  codeSnippet  String?      @db.Text
+  codeLanguage String?
+  imageUrl     String?
+  marks        Float        @default(1.0)
+  orderIndex   Int          @default(0)
+  options      Option[]
+  answers      Answer[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+
+  @@index([sectionId, orderIndex])
+}
+
+model Option {
+  id         String    @id @default(uuid())
+  questionId String
+  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String    @db.Text
+  isCorrect  Boolean   @default(false)
+  orderIndex Int       @default(0)
+  answers    Answer[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([questionId])
+}
+
+model Attempt {
+  id          String        @id @default(uuid())
+  quizId      String
+  quiz        Quiz          @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  startedAt   DateTime      @default(now())
+  submittedAt DateTime?
+  status      AttemptStatus @default(IN_PROGRESS)
+  totalScore  Float?
+  maxScore    Float?
+  percentage  Float?
+  answers     Answer[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([quizId, userId])
+  @@index([quizId, status])
+  @@index([quizId, teamId])
+  @@index([userId])
+}
+
+model Answer {
+  id                 String   @id @default(uuid())
+  attemptId          String
+  attempt            Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId         String
+  question           Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptionId   String?
+  selectedOption     Option?  @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+  isCorrect          Boolean? @default(false)
+  marksAwarded       Float    @default(0)
+  isMarkedForReview  Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+}

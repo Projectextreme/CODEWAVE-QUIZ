@@ -1,0 +1,565 @@
+Build a production-quality, responsive **MCQ Quiz Platform** using the following stack:
+
+* **Next.js** (App Router, TypeScript)
+* **Tailwind CSS**
+* **PostgreSQL hosted on Neon**
+* **Prisma ORM**
+* Authentication with secure role-based access
+* Neon Object Storage for question images where appropriate
+
+## 1. Project Goal
+
+Build an online MCQ platform for approximately:
+
+* 20 teams
+* Maximum ~25 concurrent users
+* Multiple administrators
+* Multiple quizzes stored in the system
+* Only **one quiz active for users at a time**
+* All users participating in an active quiz receive the same quiz
+* Quiz can be scheduled using a start time and end time
+
+The system should be simple, reliable, fast, and easy to maintain. Do not introduce unnecessary microservices, Redis, Kafka, Kubernetes, or other infrastructure.
+
+---
+
+## 2. Quiz Structure
+
+Each quiz contains sections.
+
+Example:
+
+### Section 1
+
+* 1-mark questions
+* Mostly theoretical/conceptual
+* 10 questions
+
+### Section 2
+
+* 2-mark questions
+* Mostly practical questions
+* May contain:
+
+  * Code snippets
+  * Images
+  * Output-based questions
+  * Technical scenarios
+* 20 questions if the total quiz needs to be 50 marks
+
+Important:
+Do not hardcode the number of questions or marks. Store section/question marks in the database so administrators can configure them.
+
+Every question has exactly 4 options and exactly one correct option.
+
+---
+
+## 3. User Roles
+
+Implement:
+
+### USER
+
+Can:
+
+* Login
+* View the currently active quiz
+* Start the quiz
+* Answer questions
+* Navigate between questions
+* See remaining time
+* Submit the quiz
+* View their result if enabled
+
+### ADMIN
+
+Can:
+
+* Login
+* Access admin dashboard
+* Create/edit/delete quizzes
+* Schedule quizzes
+* Activate/deactivate quizzes
+* Manage sections
+* Create/edit/delete questions
+* Create/edit/delete options
+* Upload question images
+* Add code snippets
+* Manage users
+* Manage teams
+* View attempts
+* View results
+* View analytics
+
+Never rely only on frontend checks for authorization. Enforce authorization on the server.
+
+---
+
+## 4. Quiz Lifecycle
+
+Implement:
+
+DRAFT → SCHEDULED → ACTIVE → COMPLETED
+
+A quiz should have:
+
+* title
+* description
+* start time
+* end time
+* optional duration
+* status
+* created_at
+* updated_at
+
+The backend must determine whether a quiz is active based on server time.
+
+Do not trust the browser clock.
+
+Only one quiz can be ACTIVE at a time.
+
+Prefer scheduled start/end times over a simple ON/OFF toggle, but provide an administrator control to manually activate/deactivate a quiz when necessary.
+
+---
+
+## 5. Database Design
+
+Use PostgreSQL with Prisma.
+
+Create appropriate relational models for:
+
+* User
+* Team
+* Quiz
+* Section
+* Question
+* Option
+* Attempt
+* Answer
+
+Use foreign keys and appropriate indexes.
+
+Important constraints:
+
+* Email must be unique
+* A user should not have multiple attempts for the same quiz
+* A question belongs to one section
+* A section belongs to one quiz
+* A question has four options
+* Only one option is correct
+
+Use transactions where required, especially during final quiz submission and score calculation.
+
+Prefer soft deletion for entities that may be referenced by historical attempts/results.
+
+---
+
+## 6. Quiz Request Flow
+
+Optimize the request flow.
+
+When the user opens the quiz:
+
+GET active quiz
+
+Return:
+
+* quiz metadata
+* sections
+* questions
+* options
+* marks
+* images/code snippets
+
+Never send correct answers to the client.
+
+When the user selects an answer, maintain local state and periodically persist answers to the backend.
+
+On final submission:
+
+1. Validate the attempt
+2. Validate quiz timing
+3. Validate submitted answers
+4. Retrieve correct answers from the database
+5. Calculate score on the server
+6. Save the final score
+7. Mark attempt as completed
+8. Return the result
+
+Never calculate the authoritative score only on the frontend.
+
+---
+
+## 7. Timer
+
+The frontend timer is only for display.
+
+The backend must remain authoritative.
+
+Store:
+
+* started_at
+* submitted_at
+* quiz end time
+
+Calculate remaining time using server-controlled timestamps.
+
+If the quiz expires, automatically finalize or reject further submissions according to the quiz rules.
+
+Prevent users from manipulating the browser clock or extending the quiz using JavaScript.
+
+---
+
+## 8. Question Types
+
+Initially support a single-choice MCQ model with exactly four choices.
+
+Questions should support:
+
+### Theory
+
+Plain text question.
+
+### Code
+
+Store:
+
+* question text
+* programming language
+* code snippet
+
+Display code using a readable monospace/code block.
+
+### Image
+
+Store the image externally and keep its URL/reference in PostgreSQL.
+
+Do not store large image binaries directly inside PostgreSQL.
+
+Design the model so additional question types can be added later.
+
+---
+
+## 9. Admin Dashboard
+
+Create a polished admin dashboard.
+
+Dashboard should show:
+
+* Total users
+* Total teams
+* Total quizzes
+* Active quiz
+* Total participants
+* Completed attempts
+* In-progress attempts
+* Average score
+* Highest score
+* Lowest score
+
+Provide navigation for:
+
+* Dashboard
+* Quizzes
+* Questions
+* Teams
+* Users
+* Attempts
+* Results
+* Analytics
+* Settings
+
+---
+
+## 10. Quiz Management
+
+Admin should be able to:
+
+Create quiz → Add sections → Add questions → Configure marks → Schedule → Publish/Activate
+
+Provide clear UI for:
+
+* Create quiz
+* Edit quiz
+* Duplicate quiz
+* Schedule quiz
+* Activate/deactivate
+* View questions
+* Reorder sections
+* Reorder questions
+* Preview quiz
+* View analytics
+
+---
+
+## 11. Question Management UI
+
+Create a good question editor.
+
+It should allow an administrator to enter:
+
+* Section
+* Question text
+* Question type
+* Marks
+* Code language
+* Code snippet
+* Image
+* Four options
+* Correct option
+
+Provide preview functionality so the administrator can see exactly how the question will appear to users.
+
+---
+
+## 12. Analytics
+
+Implement analytics at:
+
+### Quiz level
+
+* Total participants
+* Completed
+* Not started
+* Average score
+* Median score
+* Highest score
+* Lowest score
+* Average completion time
+
+### Question level
+
+For each question:
+
+* Number of attempts
+* Correct %
+* Incorrect %
+* Skipped %
+* Average marks obtained
+
+### Team level
+
+Show:
+
+* Team name
+* Number of participants
+* Average score
+* Highest score
+* Completion rate
+
+Provide a leaderboard if appropriate.
+
+Use charts where they genuinely improve readability.
+
+---
+
+## 13. UI/UX
+
+Create a clean, modern, interactive interface.
+
+Primary visual direction:
+
+**Blue / water / aqua color scheme**
+
+Use a restrained professional palette rather than making the entire screen blue.
+
+Support:
+
+* Light mode
+* Dark mode
+
+Use CSS/design tokens so both themes share the same components.
+
+The UI should be responsive for:
+
+* Desktop
+* Tablet
+* Mobile
+
+Quiz interface should prioritize speed and clarity.
+
+---
+
+## 14. Quiz UI
+
+Design the quiz interface approximately like:
+
+Quiz title                    Timer
+
+Section 2 · 2 Marks
+
+Question 14 of 20
+
+[Question text]
+
+[Code/Image if applicable]
+
+○ Option A
+○ Option B
+○ Option C
+○ Option D
+
+[Previous]                     [Next]
+
+Question navigation:
+1  2  3  4  5  6  7  8  ...
+
+Clearly indicate:
+
+* Current question
+* Answered questions
+* Unanswered questions
+* Marked/review questions if implemented
+
+Add a clear final Submit button with confirmation.
+
+---
+
+## 15. Security
+
+Implement:
+
+* Secure authentication
+* Password hashing if using password authentication
+* Role-based authorization
+* Server-side validation
+* Input validation
+* Protection against duplicate attempts
+* No correct answers in client responses
+* Server-side score calculation
+* Server-side time validation
+* Rate limiting where appropriate
+* Secure environment variables
+* No database credentials exposed to the browser
+
+Use transactions for critical operations.
+
+---
+
+## 16. Performance
+
+Target:
+
+* ~20 teams
+* ~25 concurrent users
+
+Optimize for this scale without overengineering.
+
+Use:
+
+* Proper PostgreSQL indexes
+* Efficient Prisma queries
+* Pagination in admin tables
+* Avoid unnecessary API calls
+* Client-side state for temporary answer selections
+* Batched answer persistence where appropriate
+* Server-side caching only where it provides a clear benefit
+
+Do not introduce Redis or other infrastructure unless there is a demonstrated requirement.
+
+---
+
+## 17. API / Server Architecture
+
+Use Next.js Route Handlers or Server Actions appropriately.
+
+Organize backend logic into clear service/domain modules rather than putting all business logic directly inside route handlers.
+
+Separate concerns such as:
+
+* authentication
+* quiz management
+* question management
+* attempt management
+* scoring
+* analytics
+
+Keep database access through Prisma.
+
+---
+
+## 18. Environment Variables
+
+Use environment variables for:
+
+* DATABASE_URL
+* authentication secrets
+* storage credentials
+* other sensitive configuration
+
+Provide a `.env.example`.
+
+Never commit secrets.
+
+---
+
+## 19. Seed Data
+
+Create realistic seed data for development:
+
+* 3 teams
+* 10–20 users
+* 2–3 quizzes
+* Multiple sections
+* Theory questions
+* Code questions
+* Image-based question example
+* Four options per question
+* Different marks
+
+Include one active quiz for testing.
+
+---
+
+## 20. Code Quality
+
+Use:
+
+* TypeScript
+* Strong typing
+* Reusable React components
+* Clean folder structure
+* Server/client component boundaries where appropriate
+* Meaningful error handling
+* Load`ing states
+* Empty states
+* Form validation
+* Confirmation dialogs for destructive operations
+
+Do not use placeholder implementations for core functionality.
+
+Build the application incrementally and ensure each major feature works before moving to the next.
+
+## Final Deliverable
+
+Produce a complete working application with:
+
+1. User authentication
+2. Admin authentication
+3. User dashboard
+4. Admin dashboard
+5. Quiz CRUD
+6. Section CRUD
+7. Question CRUD
+8. Option management
+9. Image/code question support
+10. Quiz scheduling
+11. One-active-quiz enforcement
+12. Quiz attempt management
+13. Timer
+14. Answer persistence
+15. Server-side scoring
+16. Results
+17. Team management
+18. Analytics
+19. Leaderboard
+20. Light/dark themes
+21. Responsive UI
+22. PostgreSQL + Prisma integration
+23. Neon-compatible deployment configuration
+24. Seed data
+25. Proper error/loading states
+
+Before considering the project complete, verify the complete flow:
+
+Admin creates quiz → adds questions → schedules quiz → quiz becomes active → user logs in → starts quiz → answers questions → answers are persisted → timer expires/submission occurs → server calculates score → result is stored → admin sees analytics.
